@@ -3,7 +3,8 @@
 # 大声读 · ReadAloud
 
 朗读一段经典英文文稿：R2T2 一边听一边出**稳定前缀**，Jev 逐词判「读的是不是同一个词」，
-读完给一个总分，点总分才展开明细。标志是「大」抬在「声」上方的上下结构叠字。
+读完给一个总分，点总分才展开明细。三篇文稿都压到 25–35 词（一遍 12–18 秒），
+读之前可以先听一遍范读（浏览器语音合成，念到哪个词高亮哪个词）。标志是「大」抬在「声」上方的上下结构叠字。
 
 ## 方法论：为什么是 R2T2 + Jev
 
@@ -61,8 +62,23 @@ R2T2_LANGUAGE=English
 （Qwen3-ASR 微调，~2B，真流式，最小 160ms 步长）·
 [GitHub](https://github.com/netease-youdao/Confucius4-R2T2)
 
-最快：直接用有道线上 demo 的中继（[r2t2.youdao.com/demo](https://r2t2.youdao.com/demo)
-页面里就有 token），单次会话 30 秒上限，填进 `R2T2_WS_URL` 即可。
+两种方言，按 `R2T2_WS_URL` 的路径自动判（`/asr_stream_api*` → 自部署），
+也能用 `R2T2_DIALECT` 手动指定：
+
+| | `relay` 线上中继 | `native` 自部署 |
+|---|---|---|
+| 路径 | `/asr?t=<token>` | `/asr_stream_api_v1` |
+| 首帧 | `protocol_version: 2` | 另一组字段 + `secret_key` |
+| 音频帧 | 12 字节 `NAS2` 头 + PCM16 | 裸 PCM16，没有头 |
+| `msg.text` | 完整已提交前缀 | **增量**，客户端自己拼 |
+| 收尾 | 直接 EOS | EOS 前要补 0.5s 静音，否则丢最后一个词 |
+| 时长 | 30 秒上限 | 不限 |
+| 语言 | English | English / Chinese / `zhen` 中英混 |
+
+差异都收在 `lib/r2t2-protocol.js` 一份里，浏览器和服务端共用。
+
+最快：用有道线上 demo 的中继（[r2t2.youdao.com/demo](https://r2t2.youdao.com/demo)
+页面里就有 token），填进 `R2T2_WS_URL` 即可。
 
 自部署（要 CUDA，Ampere 以上一张 12G 卡够用，Mac 跑不了 —— infer_mode 绑死 vLLM+CUDA）：
 
@@ -89,4 +105,5 @@ lib/jev.js             ZenMux System One 客户端（含代理兜底）
 lib/score.js           问题构造、判决解析、四项子分与总分
 lib/asr.js             provider：mock / r2t2（WebSocket + PCM16）
 lib/mic.js             浏览器端采音与重采样
+lib/speak.js           范读：语音合成 + 逐词高亮
 ```

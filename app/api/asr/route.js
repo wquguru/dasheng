@@ -20,8 +20,11 @@ export async function GET() {
   return Response.json({
     provider,
     wsUrl: cfg.url,
+    dialect: cfg.dialect,
     language: cfg.language,
-    maxSeconds: cfg.maxSeconds,
+    // secret_key 是自部署服务的默认口令（仓库里就写着 test0102），不是密钥
+    secretKey: cfg.dialect === "native" ? cfg.secretKey : "",
+    maxSeconds: cfg.maxSeconds, // 0 = 不限时
   });
 }
 

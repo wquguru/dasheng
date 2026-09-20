@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Logo from "./Logo.js";
 import { PASSAGES } from "../lib/passages.js";
 import { align, tokenize } from "../lib/align.js";
+import { canSpeak, speak } from "../lib/speak.js";
 import { recordToR2T2 } from "../lib/mic.js";
 
 const BEST = {}; // 本次会话里每篇的最好成绩，够用，不落库
@@ -18,6 +19,10 @@ export default function Page() {
   const [elapsed, setElapsed] = useState(0);
   const [level, setLevel] = useState(() => new Array(14).fill(0));
   const [duration, setDuration] = useState(0);
+  const [demoAt, setDemoAt] = useState(-1); // 范读念到哪个词
+  // 服务端不知道这台浏览器有没有语音合成，等挂载后再决定按钮出不出，免得水合不一致
+  const [canDemo, setCanDemo] = useState(false);
+  const stopDemo = useRef(null);
   const abort = useRef(null);
   const mic = useRef(null);
   const stopRef = useRef(null);
@@ -57,7 +62,9 @@ export default function Page() {
     const t0 = Date.now();
     // 中继有单次会话上限（线上 demo 是 30 秒），到点前自己收尾，
     // 比被服务端切掉强 —— 至少最后一版 is_final 还能拿到。
-    const capMs = asr?.provider === "r2t2" ? (asr.maxSeconds || 30) * 1000 - 1200 : Infinity;
+    // maxSeconds 为 0（自部署）就是不限时
+    const capMs =
+      asr?.provider === "r2t2" && asr.maxSeconds > 0 ? asr.maxSeconds * 1000 - 1200 : Infinity;
     const tick = setInterval(() => {
       const now = Date.now() - t0;
       setElapsed(now);
@@ -83,6 +90,7 @@ export default function Page() {
     setResult(null);
     setOpen(false);
     setElapsed(0);
+    stopDemo.current?.();
     setPhase("reading");
     const controller = new AbortController();
     abort.current = controller;
@@ -96,7 +104,9 @@ export default function Page() {
         // 复述一遍贴在结果前面。评分要的是它真听到了什么。
         const session = await recordToR2T2({
           wsUrl: asr.wsUrl,
+          dialect: asr.dialect || "relay",
           language: asr.language || "English",
+          secretKey: asr.secretKey || "",
           onCommit: ({ committed, partial }) => {
             text = committed;
             setHeard(partial ? `${committed} ${partial}` : committed);
@@ -194,6 +204,32 @@ export default function Page() {
   }, [passageId, passage, elapsed, asr]);
 
   // 停：真麦克风是「说完了」（送 EOS 等最后一版），mock 是掐断流
+  // 范读：听一遍再读。念到哪个词就高亮哪个词。
+  const playDemo = useCallback(() => {
+    if (stopDemo.current) {
+      stopDemo.current();
+      stopDemo.current = null;
+      setDemoAt(-1);
+      return;
+    }
+    setDemoAt(0);
+    stopDemo.current = speak(passage.text, {
+      onWord: (charIndex) => {
+        const i = words.findIndex((w) => charIndex >= w.start && charIndex < w.end);
+        if (i >= 0) setDemoAt(i);
+      },
+      onEnd: () => {
+        stopDemo.current = null;
+        setDemoAt(-1);
+      },
+    });
+  }, [passage, words]);
+
+  useEffect(() => {
+    setCanDemo(canSpeak());
+    return () => stopDemo.current?.();
+  }, []);
+
   const stop = useCallback(() => {
     if (mic.current) mic.current.stop();
     else abort.current?.abort();
@@ -216,6 +252,8 @@ export default function Page() {
 
   const pick = (id) => {
     if (phase === "reading" || phase === "scoring") return;
+    stopDemo.current?.();
+    setDemoAt(-1);
     setPassageId(id);
     setPhase("idle");
     setHeard("");
@@ -236,9 +274,11 @@ export default function Page() {
           {phase === "done" && <button onClick={start}>再读一次</button>}
           <span className="source">
             {phase === "reading"
-              ? asr?.provider === "r2t2"
-                ? "R2T2 · 160 MS 步长 · 实时"
-                : "R2T2 · 160 MS 步长 · MOCK"
+              ? asr?.provider !== "r2t2"
+                ? "R2T2 · 160 MS 步长 · MOCK"
+                : asr.dialect === "native"
+                  ? "R2T2 · 160 MS 步长 · 自部署"
+                  : "R2T2 · 160 MS 步长 · 线上中继"
               : phase === "scoring"
                 ? "JEV 判词中…"
                 : ""}
@@ -262,7 +302,7 @@ export default function Page() {
         <p className={`passage ${phase === "idle" ? "idle" : ""} ${phase === "done" ? "done" : ""}`}>
           {words.map((w, i) => (
             <span key={i}>
-              <span className={`w ${wordClass({ i, phase, finalMarks, live: liveMarks })}`}>{w.raw}</span>
+              <span className={`w ${wordClass({ i, phase, finalMarks, live: liveMarks, demoAt })}`}>{w.raw}</span>
               {tail(passage.text, words, i)}
             </span>
           ))}
@@ -319,9 +359,16 @@ export default function Page() {
         <div className="mic">
           {phase === "idle" && (
             <>
-              <button className="primary" onClick={start}>
-                开始朗读
-              </button>
+              <div className="idle-acts">
+                <button className="primary" onClick={start}>
+                  开始朗读
+                </button>
+                {canDemo && (
+                  <button onClick={playDemo}>
+                    {demoAt >= 0 ? "停止范读" : "先听一遍范读"}
+                  </button>
+                )}
+              </div>
               <span className="hint">按 SPACE 开始 · 音频不落盘</span>
             </>
           )}
@@ -332,8 +379,8 @@ export default function Page() {
               </button>
               <span className="hint">
                 SPACE 停止
-                {asr?.provider === "r2t2"
-                  ? ` · 还剩 ${Math.max(0, Math.ceil((asr.maxSeconds || 30) - elapsed / 1000))}s`
+                {asr?.provider === "r2t2" && asr.maxSeconds > 0
+                  ? ` · 还剩 ${Math.max(0, Math.ceil(asr.maxSeconds - elapsed / 1000))}s`
                   : ""}
               </span>
             </>
@@ -455,8 +502,8 @@ function Sub({ k, v, pct }) {
   );
 }
 
-function wordClass({ i, phase, finalMarks, live }) {
-  if (phase === "idle") return "";
+function wordClass({ i, phase, finalMarks, live, demoAt }) {
+  if (phase === "idle") return i === demoAt ? "demo" : "";
   if (finalMarks) return finalMarks[i]?.status || "missed";
   const m = live.marks[i];
   if (m) return m;

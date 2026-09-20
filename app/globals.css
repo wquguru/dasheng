@@ -54,16 +54,25 @@ body {
 
 /* ---------- header ---------- */
 header {
+  position: relative;
   flex: none;
   height: 76px;
   padding: 0 clamp(16px, 3vw, 40px);
   border-bottom: 1px solid var(--hair);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
 }
-.brand { display: flex; align-items: center; gap: 14px; }
+/* 标志与站名在页眉正中，工具留在右侧 */
+.brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 .brand .mark {
   width: 34px; height: 34px;
   border: 1px solid var(--line);
@@ -193,6 +202,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .mic .knob .stop { width: 18px; height: 18px; border-radius: 3px; background: var(--bg); display: block; }
 .mic .knob .total { font-family: var(--serif); font-weight: 300; font-size: 46px; line-height: 1; color: var(--bg); }
 .mic .hint { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--ink-3); }
+.idle-acts { display: flex; align-items: center; gap: 12px; }
+.w.demo { background: var(--fill-soft); border-radius: 4px; padding: 0 6px; }
 .mic .hint.plain { font-family: var(--sans); font-size: 12px; letter-spacing: 0; color: var(--ink-2); }
 
 /* ---------- passage cards ---------- */
