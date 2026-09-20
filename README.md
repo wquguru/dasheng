@@ -12,14 +12,9 @@
 麦克风 → R2T2（流式转写，只增不改 + 时间戳） → 对齐 → Jev（封闭问题判决） → 本机算术 → 划线 + 总分
 ```
 
-- **R2T2 负责「听到了什么」**。它的 stable prefix 是关键：已提交的词不会回改，
-  所以划过线的词不会闪、不用撤销，判过分的词也不用重判。
-- **对齐负责「该问谁」**。原文 ↔ 听到做词级 LCS 对齐，只有对不上的那几个词才值得问模型；
-  漏读、多读、完整度到这一步就是算术，根本不需要模型。
-- **Jev 负责「这算不算错」**。它只回答预先声明好的封闭问题（`noul` 是非 / `choice` 多选 /
-  `score` 1–5 级）并给概率，70–500ms、几乎不要钱。`liberti` 是 ASR 拼写变体还是真念错了，
-  这种判断正是它的形状。
-- **代码负责算术**。总分是本机加权，不问模型。
+要点在分工：R2T2 的 **stable prefix**（已提交的词不回改）让划过的线不会闪、判过的分不用重判；
+对齐挑出对不上的那几个词，只有它们值得问模型；Jev 只回答预先声明好的封闭问题并给概率；
+算术留在本机。
 
 | 评什么 | 谁算 |
 |---|---|
@@ -62,48 +57,23 @@ R2T2_LANGUAGE=English
 （Qwen3-ASR 微调，~2B，真流式，最小 160ms 步长）·
 [GitHub](https://github.com/netease-youdao/Confucius4-R2T2)
 
-两种方言，按 `R2T2_WS_URL` 的路径自动判（`/asr_stream_api*` → 自部署），
-也能用 `R2T2_DIALECT` 手动指定：
+最快：用有道线上 demo 的中继（[r2t2.youdao.com/demo](https://r2t2.youdao.com/demo) 页面里就有
+token），单次会话 30 秒上限，填进 `R2T2_WS_URL` 即可。
 
-| | `relay` 线上中继 | `native` 自部署 |
-|---|---|---|
-| 路径 | `/asr?t=<token>` | `/asr_stream_api_v1` |
-| 首帧 | `protocol_version: 2` | 另一组字段 + `secret_key` |
-| 音频帧 | 12 字节 `NAS2` 头 + PCM16 | 裸 PCM16，没有头 |
-| `msg.text` | 完整已提交前缀 | **增量**，客户端自己拼 |
-| 收尾 | 直接 EOS | EOS 前要补 0.5s 静音，否则丢最后一个词 |
-| 时长 | 30 秒上限 | 不限 |
-| 语言 | English | English / Chinese / `zhen` 中英混 |
+自部署要 CUDA（Mac 跑不了，infer_mode 绑死 vLLM），步骤与七八个会咬人的坑
+——`language` 传错会让流式退化成整句、显存参数按大卡写死、服务默认 `0.0.0.0` + 写死的
+secret_key、浏览器采音与离线跑 wav 的两处差异——都在 **[docs/deploy-r2t2.md](docs/deploy-r2t2.md)**。
 
-差异都收在 `lib/r2t2-protocol.js` 一份里，浏览器和服务端共用。
-
-最快：用有道线上 demo 的中继（[r2t2.youdao.com/demo](https://r2t2.youdao.com/demo)
-页面里就有 token），填进 `R2T2_WS_URL` 即可。
-
-自部署（要 CUDA，Ampere 以上一张 12G 卡够用，Mac 跑不了 —— infer_mode 绑死 vLLM+CUDA）：
-
-```bash
-export HF_ENDPOINT=https://hf-mirror.com          # 国内
-huggingface-cli download netease-youdao/Confucius4-R2T2 --local-dir ./r2t2
-git clone https://github.com/netease-youdao/Confucius4-R2T2 && cd Confucius4-R2T2
-uv venv --python 3.12 && uv pip install -e .      # vLLM 会覆盖镜像自带的 torch，正常
-bash run_example.sh --infer_mode stream_vllm --chunk_size_ms 160
-```
-
-起好流式服务后把 WebSocket 地址填进 `R2T2_WS_URL`，`R2T2_MAX_SECONDS` 可以放开。
-音频格式：16k 单声道 PCM16。**别设 `R2T2_SYSTEM_PROMPT` 塞原文** —— LLM 解码器会顺着提示
-把念错的词改回去，分就假了。
+别设 `R2T2_SYSTEM_PROMPT` 塞原文 —— LLM 解码器会顺着提示把念错的词改回去，分就假了。
 
 ## 目录
 
 ```
-app/page.js            四个状态：待读 → 朗读中 → 判词中 → 读完（总分钮 → 明细面板）
-app/api/asr/route.js   ASR 出口：mock 的 SSE 流 / r2t2 的中继地址
-app/api/score/route.js 一次判分
-lib/align.js           词级对齐 —— 决定哪些词值得问 Jev
-lib/jev.js             ZenMux System One 客户端（含代理兜底）
-lib/score.js           问题构造、判决解析、四项子分与总分
-lib/asr.js             provider：mock / r2t2（WebSocket + PCM16）
-lib/mic.js             浏览器端采音与重采样
-lib/speak.js           范读：语音合成 + 逐词高亮
+app/page.js   待读 → 朗读中 → 判词中 → 读完（总分钮 → 明细面板）
+app/api/      asr：mock 的 SSE 流 / r2t2 的中继地址 · score：一次判分
+lib/align.js  词级对齐 —— 决定哪些词值得问 Jev
+lib/jev.js    ZenMux System One 客户端（含代理兜底）
+lib/score.js  问题构造、判决解析、四项子分与总分
+lib/asr.js    provider：mock / r2t2（WebSocket + PCM16）
+lib/mic.js    浏览器采音与重采样 · lib/speak.js 范读与逐词高亮
 ```
