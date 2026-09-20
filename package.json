@@ -1,0 +1,17 @@
+{
+  "name": "dasheng",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test lib/align.test.js"
+  },
+  "dependencies": {
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "undici": "^8.10.2"
+  }
+}

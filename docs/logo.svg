@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="156" viewBox="0 0 100 130" fill="none">
+  <style>
+    .s { stroke: #1B1A17; }
+    @media (prefers-color-scheme: dark) { .s { stroke: #F4F1EA; } }
+  </style>
+  <g class="s" stroke-width="11" stroke-linecap="square">
+    <path d="M5 20 H95"/>
+    <path d="M50 20 C43 35 31 49 14 60"/>
+    <path d="M50 20 C57 35 69 49 86 60"/>
+  </g>
+  <g class="s" stroke-width="8" stroke-linecap="square">
+    <path d="M28 74 H72"/>
+    <path d="M50 74 V89"/>
+    <path d="M35 89 H65"/>
+    <path d="M24 99 H76 V109"/>
+    <path d="M24 109 H76"/>
+    <path d="M25 99 C23 109 20 117 13 126"/>
+  </g>
+</svg>
