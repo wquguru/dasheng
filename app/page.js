@@ -6,6 +6,7 @@ import { PASSAGES } from "../lib/passages.js";
 import { align, tokenize } from "../lib/align.js";
 import { canSpeak, speak } from "../lib/speak.js";
 import { recordToR2T2 } from "../lib/mic.js";
+import { recordCommitTimestamp } from "../lib/pauses.js";
 
 const BEST = {}; // 本次会话里每篇的最好成绩，够用，不落库
 
@@ -26,7 +27,7 @@ export default function Page() {
   const abort = useRef(null);
   const mic = useRef(null);
   const stopRef = useRef(null);
-  const stats = useRef({ durationMs: 0, pauses: 0 });
+  const stats = useRef({ durationMs: 0, pauses: 0, lastCommitAt: null });
   const [asr, setAsr] = useState(null); // { provider, wsUrl, language }
 
   // 这台机器上 ASR 是谁：mock 还是真的 R2T2
@@ -90,6 +91,7 @@ export default function Page() {
     setResult(null);
     setOpen(false);
     setElapsed(0);
+    stats.current = { durationMs: 0, pauses: 0, lastCommitAt: null };
     stopDemo.current?.();
     setPhase("reading");
     const controller = new AbortController();
@@ -107,7 +109,8 @@ export default function Page() {
           dialect: asr.dialect || "relay",
           language: asr.language || "English",
           secretKey: asr.secretKey || "",
-          onCommit: ({ committed, partial }) => {
+          onCommit: ({ committed, partial, at }) => {
+            recordCommitTimestamp(stats.current, at);
             text = committed;
             setHeard(partial ? `${committed} ${partial}` : committed);
           },
@@ -120,7 +123,7 @@ export default function Page() {
         const out = await session.done;
         mic.current = null;
         text = out.heard || text;
-        stats.current = { durationMs: out.durationMs, pauses: 0 };
+        stats.current = { durationMs: out.durationMs, pauses: stats.current.pauses };
         setDuration(out.durationMs || 0);
         setHeard(text);
       } catch (err) {
