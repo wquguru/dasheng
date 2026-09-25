@@ -465,7 +465,16 @@ function Sheet({ result, onClose, onAgain }) {
       </div>
 
       <div className="diffs">
-        {rows.length === 0 && <div className="diff"><span className="to">没有可看的差异 — 全读对了</span></div>}
+        {result.unjudged?.length > 0 && (
+          <div className="diff">
+            <span className="from doubt">未判定</span>
+            <span className="arrow">→</span>
+            <span className="to">{result.unjudged.length} 个替换词受问题上限影响，仍计入已读完整度</span>
+          </div>
+        )}
+        {rows.length === 0 && !result.unjudged?.length && (
+          <div className="diff"><span className="to">没有可看的差异 — 全读对了</span></div>
+        )}
         {rows.map((r, i) => (
           <div className="diff" key={i}>
             <span className={`from ${r.status}`}>{r.from}</span>
